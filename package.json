@@ -1,0 +1,10 @@
+{
+  "name": "battle-engine-project-draft",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix Battle_Engine_Project_Draft run dev",
+    "build": "npm --prefix Battle_Engine_Project_Draft run build",
+    "start": "npm --prefix Battle_Engine_Project_Draft run start",
+    "preview": "npm --prefix Battle_Engine_Project_Draft run preview"
+  }
+}
