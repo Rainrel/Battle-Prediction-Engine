@@ -1,8 +1,8 @@
 {
   "framework": "vite",
-  "installCommand": "cd Battle_Engine_Project_Draft && npm ci",
-  "buildCommand": "cd Battle_Engine_Project_Draft && npm run build",
-  "outputDirectory": "Battle_Engine_Project_Draft/dist",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/(.*)",
