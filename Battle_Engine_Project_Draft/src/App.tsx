@@ -93,6 +93,36 @@ const pokemonTypes = [
   'Fairy',
 ]
 
+const typeChart: Record<string, { strongAgainst: string[] }> = {
+  Normal: { strongAgainst: [] },
+  Fire: { strongAgainst: ['Grass', 'Ice', 'Bug', 'Steel'] },
+  Water: { strongAgainst: ['Fire', 'Ground', 'Rock'] },
+  Electric: { strongAgainst: ['Water', 'Flying'] },
+  Grass: { strongAgainst: ['Water', 'Ground', 'Rock'] },
+  Ice: { strongAgainst: ['Grass', 'Ground', 'Flying', 'Dragon'] },
+  Fighting: { strongAgainst: ['Normal', 'Ice', 'Rock', 'Dark', 'Steel'] },
+  Poison: { strongAgainst: ['Grass', 'Fairy'] },
+  Ground: { strongAgainst: ['Fire', 'Electric', 'Poison', 'Rock', 'Steel'] },
+  Flying: { strongAgainst: ['Grass', 'Fighting', 'Bug'] },
+  Psychic: { strongAgainst: ['Fighting', 'Poison'] },
+  Bug: { strongAgainst: ['Grass', 'Psychic', 'Dark'] },
+  Rock: { strongAgainst: ['Fire', 'Ice', 'Flying', 'Bug'] },
+  Ghost: { strongAgainst: ['Psychic', 'Ghost'] },
+  Dragon: { strongAgainst: ['Dragon'] },
+  Dark: { strongAgainst: ['Psychic', 'Ghost'] },
+  Steel: { strongAgainst: ['Ice', 'Rock', 'Fairy'] },
+  Fairy: { strongAgainst: ['Fighting', 'Dragon', 'Dark'] },
+}
+
+const pokemonTypeFallbacks: Record<string, string[]> = {
+  pikachu: ['Electric'],
+  raichu: ['Electric'],
+  electabuzz: ['Electric'],
+  swampert: ['Water', 'Ground'],
+  milotic: ['Water'],
+  haxorus: ['Dragon'],
+}
+
 const fallbackLogs: AuditLog[] = [
   {
     audit_id: '00043',
@@ -136,6 +166,64 @@ function formatF1(value: number | undefined, fallback: number) {
 
 function formatConfidence(value: number) {
   return `${asPercent(value, value).toFixed(1)}%`
+}
+
+function splitLineup(value: string) {
+  return value
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
+}
+
+function normalizePokemonName(value: string) {
+  return value.toLowerCase().replace(/[.']/g, '').replace(/\s+/g, '-')
+}
+
+function resolveFallbackTypes(lineup: string[]) {
+  return lineup.flatMap((name) => pokemonTypeFallbacks[normalizePokemonName(name)] || ['Normal'])
+}
+
+function runLocalInference(gymType: string, gymLineup: string, challengerLineup: string): InferenceResult {
+  const challengerTypes = resolveFallbackTypes(splitLineup(challengerLineup))
+  const gymTypes = resolveFallbackTypes(splitLineup(gymLineup))
+  const reasons: string[] = []
+  let score = 0
+
+  challengerTypes.forEach((type) => {
+    if (typeChart[type]?.strongAgainst.includes(gymType)) {
+      score += 2
+      reasons.push(`${type} coverage pressures ${gymType}`)
+    }
+
+    gymTypes.forEach((defenderType) => {
+      if (typeChart[type]?.strongAgainst.includes(defenderType)) score += 0.6
+    })
+  })
+
+  gymTypes.forEach((type) => {
+    challengerTypes.forEach((challengerType) => {
+      if (typeChart[type]?.strongAgainst.includes(challengerType)) score -= 0.45
+    })
+  })
+
+  const challengerCoverage = new Set(challengerTypes).size
+  const gymCoverage = new Set(gymTypes).size
+  score += (challengerCoverage - gymCoverage) * 0.25
+
+  const probability = 1 / (1 + Math.exp(-score / 3))
+  const winner = probability >= 0.5 ? 'Challenger' : 'Gym Leader'
+  const confidence = winner === 'Challenger' ? probability : 1 - probability
+
+  if (challengerCoverage > gymCoverage) reasons.push('challenger has broader type coverage')
+  if (gymCoverage > challengerCoverage) reasons.push('gym leader has broader defensive coverage')
+  if (!reasons.length) reasons.push('lineup balance and known type interactions are nearly even')
+
+  return {
+    winner,
+    confidence: Number(confidence.toFixed(2)),
+    reasoning: `Rule-Based Classifier: ${reasons.slice(0, 3).join('; ')}. Local inference mode used because the API endpoint was unavailable.`,
+    timestamp: new Date().toLocaleString(),
+  }
 }
 
 function getMatchId(match: PendingMatch) {
@@ -222,13 +310,7 @@ export default function App() {
     event.preventDefault()
     setSubmitNotice('')
 
-    const fallback: InferenceResult = {
-      winner: 'Challenger',
-      confidence: 0.74,
-      reasoning:
-        'Challenger configuration optimizes target type system flaws. (+2 Type Advantage Index via Ground-type coverage vectors from Swampert).',
-      timestamp: new Date().toLocaleString(),
-    }
+    const fallback = runLocalInference(gymLeaderType, gymLeaderLineup, challengerLineup)
 
     try {
       const res = await fetch(`${API_BASE}/api/predict`, {
@@ -248,7 +330,7 @@ export default function App() {
       })
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
-        throw new Error(errorData.error || 'prediction request failed')
+        throw new Error(errorData.error || 'prediction endpoint unavailable')
       }
       const data = await res.json()
       setInferenceResult({
@@ -259,8 +341,8 @@ export default function App() {
       })
       setApiNotice('')
     } catch (error) {
-      setInferenceResult(null)
-      setApiNotice(error instanceof Error ? error.message : 'Prediction endpoint is unavailable.')
+      setInferenceResult(fallback)
+      setApiNotice(error instanceof Error ? `${error.message}. Showing local inference result.` : 'Showing local inference result.')
     }
   }
 
