@@ -63,7 +63,7 @@ type InferenceResult = {
   timestamp: string
 }
 
-const API_BASE = 'http://localhost:3001'
+const API_BASE = ''
 
 const tabs: { id: TabId; label: string; icon: string; accent: string }[] = [
   { id: 'inference', label: 'Tab 1: Pre-Battle Inference', icon: '◎', accent: 'coral' },

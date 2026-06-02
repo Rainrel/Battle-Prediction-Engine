@@ -10,6 +10,7 @@ const POKEAPI_BASE = 'https://pokeapi.co/api/v2'
 
 app.use(cors())
 app.use(express.json())
+app.use(express.static(path.join(__dirname, 'dist')))
 
 const typeChart = {
   Normal: { weakTo: ['Fighting'], strongAgainst: [] },
@@ -610,6 +611,10 @@ app.get('/api/analytics', async (_req, res) => {
     })),
     logs,
   })
+})
+
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'))
 })
 
 initialize().then(() => {
